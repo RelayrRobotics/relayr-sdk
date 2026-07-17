@@ -2,6 +2,8 @@
 
 Connect your robot to Relayr, execute paid actions, and report proof back to the dashboard.
 
+Paid work arrives **after** a user settles USDG on Robinhood Chain mainnet via the **Settlement Splitter** (instant 88/5/4/3). Your robot must be **Activated** (`live`) in the Operator Console.
+
 Default API: `https://api.relayr.tech`
 
 ## Install
@@ -10,16 +12,11 @@ Default API: `https://api.relayr.tech`
 npm i @relayrrobotics/sdk
 ```
 
-Inside the Relayr monorepo you can import the source directly with Bun:
-
-```bash
-cd packages/sdk
-bun install
-```
-
 ## Quickstart (poll mode)
 
-Rotate an API key in **Operator Console → Settings**, then:
+1. Operator Console → register robot → **Activate**
+2. Settings → rotate API key (`rl_…`)
+3. Run the bridge:
 
 ```bash
 cp .env.example .env   # add RELAYR_API_KEY
@@ -32,14 +29,14 @@ import { Relayr } from "@relayrrobotics/sdk";
 const relayr = new Relayr({
   apiKey: process.env.RELAYR_API_KEY!,
   robotId: "rbt_your_robot", // optional filter
-  // pollIntervalMs: 2000 — keep ≥1–2s; prefer webhooks in production to avoid API load
+  // pollIntervalMs: 2000 — keep ≥1–2s; prefer webhooks in production
 });
 
 await relayr.verify();
 
 const listener = relayr.listen(async (command) => {
   console.log(`Running ${command.robotId}.${command.action}()`);
-  // command.txSignature is string | null — null until chain settlement (or under MOCK_PAY)
+  // command.txSignature — Settlement Splitter pay tx on Robinhood mainnet
   await myRobot.run(command.action);
   return {
     outcome: "success",
@@ -52,17 +49,14 @@ process.on("SIGINT", () => listener.stop());
 await listener.done;
 ```
 
+Users pay via `https://relayr.tech/pay?operatorId=…&actionId=…` or `@relayrrobotics/pay-widget`.
+
 ## Webhook mode (push)
 
-Relayr can POST `relayr.action_started` events to your server instead of polling.
+Relayr POSTs lifecycle events to your server. **Run the robot on `relayr.action_started` only.**  
+`action_completed` / `action_failed` / `action_settled` are acknowledged (200) and do not re-run your handler.
 
 Outbound requests include **`X-Relayr-Signature: sha256=<hex>`** (HMAC-SHA256 of the raw JSON body) signed with your per-operator webhook secret (`whsec_…`). Reveal or rotate it in **Operator Console → Settings**.
-
-```bash
-bun run demo:webhook
-# Set Operator Console → Settings → Webhook URL to your public endpoint
-# Set RELAYR_WEBHOOK_SECRET from Settings → reveal webhook secret
-```
 
 ```ts
 import { Relayr, createWebhookHandler } from "@relayrrobotics/sdk";
@@ -75,6 +69,11 @@ const relayr = new Relayr({
 const handleWebhook = createWebhookHandler(relayr, async (command) => {
   await myRobot.run(command.action);
   return { outcome: "success", clipUrl: command.streamUrl };
+}, {
+  onLifecycle: (event) => {
+    // optional: log settled / failed — do not execute the robot again
+    console.log(event.type, event.paidActionId);
+  },
 });
 
 Bun.serve({
@@ -88,9 +87,17 @@ Bun.serve({
 });
 ```
 
-When `webhookSecret` is set (constructor or handler options), missing/invalid signatures are rejected with **401**.
+When `webhookSecret` is set, missing/invalid signatures are rejected with **401**.
 
-The `examples/webhook-server.ts` demo is **not** production-ready: add signature verification, rate limiting, and auth before exposing a public endpoint.
+### Webhook event types
+
+| `type` | SDK behavior |
+|--------|----------------|
+| `relayr.action_started` | Run handler → `complete()` |
+| `relayr.webhook_test` | Ack (`onTest`) |
+| `relayr.action_completed` | Ack only (`onLifecycle`) |
+| `relayr.action_failed` | Ack only (`onLifecycle`) |
+| `relayr.action_settled` | Ack only (`onLifecycle`) |
 
 ### Signature format
 
@@ -99,14 +106,9 @@ The `examples/webhook-server.ts` demo is **not** production-ready: add signature
 | Header | `X-Relayr-Signature` |
 | Format | `sha256=<64-char hex>` (HMAC-SHA256 over raw body UTF-8) |
 
-## `txSignature` nullable
+## `txSignature`
 
-`command.txSignature` / webhook `txSignature` is `string | null`:
-
-- **string** — payment has a chain signature (or a mock signature in some local setups)
-- **null** — payment still pending settlement, or no real chain signature was recorded yet (e.g. early webhook / mock pay paths)
-
-Do not assume a signature is always present when an action starts.
+`command.txSignature` is the on-chain USDG pay transaction (Settlement Splitter) on Robinhood Chain. It is normally a hex hash when a command is delivered. Treat `null` as exceptional (do not assume payment failed solely from a null hash).
 
 ## API
 
@@ -116,7 +118,7 @@ Do not assume a signature is always present when an action starts.
 | `listCommands()` | Fetch settling paid actions |
 | `complete(id, input)` | Report outcome + proof (idempotent if already settled) |
 | `listen(handler, options?)` | Poll loop with retries and graceful `stop()` |
-| `createWebhookHandler(relayr, handler, options?)` | Verify signature (optional), run handler, complete |
+| `createWebhookHandler(relayr, handler, options?)` | Verify signature, run on start, ack lifecycle |
 
 ### Listen options
 

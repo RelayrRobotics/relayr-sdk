@@ -9,6 +9,7 @@ export {
   actionWebhookToCommand,
   createWebhookHandler,
   isActionWebhookPayload,
+  isLifecycleWebhookPayload,
   isWebhookTestPayload,
   parseWebhookPayload,
 } from "./webhook.js";
@@ -19,6 +20,7 @@ export type {
   RelayrCommandHandler,
   RelayrCompleteInput,
   RelayrCompleteResult,
+  RelayrLifecycleWebhookPayload,
   RelayrListenOptions,
   RelayrListener,
   RelayrOptions,

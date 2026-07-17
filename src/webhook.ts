@@ -6,14 +6,27 @@ import {
 import type {
   RelayrActionWebhookPayload,
   RelayrCommandHandler,
+  RelayrLifecycleWebhookPayload,
   RelayrWebhookPayload,
   RelayrWebhookTestPayload,
 } from "./types.js";
+
+const LIFECYCLE_TYPES = new Set([
+  "relayr.action_completed",
+  "relayr.action_failed",
+  "relayr.action_settled",
+]);
 
 export function isActionWebhookPayload(
   payload: RelayrWebhookPayload,
 ): payload is RelayrActionWebhookPayload {
   return payload.type === "relayr.action_started";
+}
+
+export function isLifecycleWebhookPayload(
+  payload: RelayrWebhookPayload,
+): payload is RelayrLifecycleWebhookPayload {
+  return LIFECYCLE_TYPES.has(payload.type);
 }
 
 export function isWebhookTestPayload(
@@ -37,6 +50,43 @@ export function parseWebhookPayload(body: unknown): RelayrWebhookPayload {
     return {
       type: "relayr.webhook_test",
       operatorId: payload.operatorId,
+      ts: payload.ts,
+    };
+  }
+
+  if (
+    type === "relayr.action_completed" ||
+    type === "relayr.action_failed" ||
+    type === "relayr.action_settled"
+  ) {
+    if (typeof payload.paidActionId !== "string" || typeof payload.ts !== "number") {
+      throw new Error(`Invalid ${type} payload`);
+    }
+    return {
+      type,
+      paidActionId: payload.paidActionId,
+      status: String(payload.status ?? ""),
+      outcome: String(payload.outcome ?? ""),
+      txSignature:
+        payload.txSignature === null || typeof payload.txSignature === "string"
+          ? payload.txSignature
+          : null,
+      clipUrl:
+        payload.clipUrl === null || typeof payload.clipUrl === "string"
+          ? payload.clipUrl
+          : null,
+      videoHash:
+        payload.videoHash === null || typeof payload.videoHash === "string"
+          ? payload.videoHash
+          : null,
+      explorerUrl:
+        payload.explorerUrl === null || typeof payload.explorerUrl === "string"
+          ? payload.explorerUrl
+          : null,
+      settlement:
+        payload.settlement && typeof payload.settlement === "object"
+          ? (payload.settlement as RelayrLifecycleWebhookPayload["settlement"])
+          : null,
       ts: payload.ts,
     };
   }
@@ -79,6 +129,7 @@ export function parseWebhookPayload(body: unknown): RelayrWebhookPayload {
       payload.txSignature === null || typeof payload.txSignature === "string"
         ? payload.txSignature
         : null,
+    status: typeof payload.status === "string" ? payload.status : undefined,
     ts: payload.ts,
   };
 }
@@ -108,7 +159,7 @@ export function actionWebhookToCommand(
     payMint: payload.payMint,
     userWallet: payload.userWallet,
     txSignature: payload.txSignature,
-    status: "settling",
+    status: payload.status ?? "settling",
     createdAt: new Date(payload.ts * 1000).toISOString(),
   };
 }
@@ -120,6 +171,8 @@ export type RelayrWebhookHandlerOptions = {
    */
   webhookSecret?: string;
   onTest?: (payload: RelayrWebhookTestPayload) => void | Promise<void>;
+  /** Lifecycle events after complete/settle — ack only; do not re-run the robot. */
+  onLifecycle?: (payload: RelayrLifecycleWebhookPayload) => void | Promise<void>;
   onInvalid?: (error: unknown) => void | Promise<void>;
 };
 
@@ -155,6 +208,11 @@ export function createWebhookHandler(
     if (isWebhookTestPayload(payload)) {
       await options.onTest?.(payload);
       return Response.json({ ok: true, type: payload.type });
+    }
+
+    if (isLifecycleWebhookPayload(payload)) {
+      await options.onLifecycle?.(payload);
+      return Response.json({ ok: true, type: payload.type, ignored: true });
     }
 
     const command = actionWebhookToCommand(payload);

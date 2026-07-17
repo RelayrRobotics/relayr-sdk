@@ -8,9 +8,9 @@ export type RelayrCommand = {
   payMint: string;
   userWallet: string;
   /**
-   * On-chain payment signature when settled on Robinhood Chain.
-   * `null` while payment is still pending, or when MOCK_PAY / offline settlement
-   * has not produced a real chain signature yet.
+   * On-chain USDG payment tx hash on Robinhood Chain (Settlement Splitter).
+   * Usually present once a paid command is delivered. May be `null` only on
+   * rare pending/legacy paths.
    */
   txSignature: string | null;
   status: string;
@@ -74,8 +74,32 @@ export type RelayrActionWebhookPayload = {
   price: number;
   payMint: string;
   userWallet: string;
-  /** See `RelayrCommand.txSignature` — may be `null` before chain settlement. */
+  /** Settlement Splitter pay tx (or null on rare pending paths). */
   txSignature: string | null;
+  status?: string;
+  ts: number;
+};
+
+export type RelayrLifecycleWebhookPayload = {
+  type:
+    | "relayr.action_completed"
+    | "relayr.action_failed"
+    | "relayr.action_settled";
+  paidActionId: string;
+  status: string;
+  outcome: string;
+  txSignature: string | null;
+  clipUrl: string | null;
+  videoHash: string | null;
+  explorerUrl: string | null;
+  settlement: {
+    gross: number;
+    operatorAmount: number;
+    stakersAmount: number;
+    treasuryAmount: number;
+    burnAmount: number;
+    paidOnChain: boolean;
+  } | null;
   ts: number;
 };
 
@@ -87,4 +111,5 @@ export type RelayrWebhookTestPayload = {
 
 export type RelayrWebhookPayload =
   | RelayrActionWebhookPayload
+  | RelayrLifecycleWebhookPayload
   | RelayrWebhookTestPayload;

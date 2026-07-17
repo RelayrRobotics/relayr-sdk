@@ -1,7 +1,7 @@
 {
   "name": "@relayrrobotics/sdk",
-  "version": "0.1.1",
-  "description": "Relayr SDK — connect your robot, execute paid actions, report proof",
+  "version": "0.1.2",
+  "description": "Relayr SDK — connect your robot, execute paid actions after USDG Settlement Splitter pay, report proof",
   "license": "MIT",
   "repository": {
     "type": "git",
