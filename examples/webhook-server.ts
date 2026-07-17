@@ -1,9 +1,16 @@
 /**
  * Webhook robot bridge — Relayr pushes action_started events to your server.
  *
+ * ⚠️ DEMO ONLY — not production-ready as-is.
+ * Production must enable:
+ *   - HMAC signature verification (RELAYR_WEBHOOK_SECRET / Settings → webhook secret)
+ *   - Rate limiting on the webhook path
+ *   - Auth / network controls (do not expose an open public handler)
+ *
  * Usage:
  *   bun run demo:webhook -- --api-key rl_xxx --port 8787
  *   # Then set Operator Console → Settings → Webhook URL to your public URL
+ *   # Copy the webhook secret into RELAYR_WEBHOOK_SECRET
  */
 
 import { Relayr, createWebhookHandler } from "../src/index";
@@ -16,6 +23,8 @@ function readArg(flag: string): string | undefined {
 
 const apiKey = readArg("--api-key") ?? process.env.RELAYR_API_KEY;
 const apiUrl = readArg("--api-url") ?? process.env.RELAYR_API_URL;
+const webhookSecret =
+  readArg("--webhook-secret") ?? process.env.RELAYR_WEBHOOK_SECRET;
 const port = Number(readArg("--port") ?? process.env.RELAYR_WEBHOOK_PORT ?? 8787);
 
 if (!apiKey) {
@@ -23,7 +32,13 @@ if (!apiKey) {
   process.exit(1);
 }
 
-const relayr = new Relayr({ apiKey, apiUrl });
+if (!webhookSecret) {
+  console.warn(
+    "[relayr-webhook] WARNING: RELAYR_WEBHOOK_SECRET unset — signatures are not verified. Demo only.",
+  );
+}
+
+const relayr = new Relayr({ apiKey, apiUrl, webhookSecret });
 await relayr.verify();
 
 const handleWebhook = createWebhookHandler(
@@ -67,6 +82,9 @@ const server = Bun.serve({
 
 console.log(`[relayr-webhook] listening on http://localhost:${server.port}/relayr/webhook`);
 console.log("[relayr-webhook] paste that URL into Operator Console → Settings → Webhook");
+console.log(
+  "[relayr-webhook] DEMO ONLY — add signature verification, rate limiting, and auth before production",
+);
 
 process.on("SIGINT", () => {
   server.stop();

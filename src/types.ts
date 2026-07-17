@@ -7,6 +7,11 @@ export type RelayrCommand = {
   price: number;
   payMint: string;
   userWallet: string;
+  /**
+   * On-chain payment signature when settled on Robinhood Chain.
+   * `null` while payment is still pending, or when MOCK_PAY / offline settlement
+   * has not produced a real chain signature yet.
+   */
   txSignature: string | null;
   status: string;
   createdAt: string;
@@ -24,13 +29,24 @@ export type RelayrCompleteResult = {
   status: string;
   clipUrl: string | null;
   videoHash: string | null;
+  /** True when the action was already settled (idempotent retry). */
+  alreadySettled?: boolean;
 };
 
 export type RelayrOptions = {
   apiKey: string;
   apiUrl?: string;
   robotId?: string;
+  /**
+   * Poll interval for `listen()`. Default 2000ms.
+   * Very low values increase API load; prefer webhooks for production.
+   */
   pollIntervalMs?: number;
+  /**
+   * HMAC secret (`whsec_…`) for verifying inbound webhooks.
+   * Prefer Settings → reveal webhook secret, or `RELAYR_WEBHOOK_SECRET`.
+   */
+  webhookSecret?: string;
 };
 
 export type RelayrListenOptions = {
@@ -58,6 +74,7 @@ export type RelayrActionWebhookPayload = {
   price: number;
   payMint: string;
   userWallet: string;
+  /** See `RelayrCommand.txSignature` — may be `null` before chain settlement. */
   txSignature: string | null;
   ts: number;
 };

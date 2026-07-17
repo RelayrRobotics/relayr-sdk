@@ -35,6 +35,7 @@ export class Relayr {
   readonly apiUrl: string;
   readonly robotId?: string;
   readonly pollIntervalMs: number;
+  readonly webhookSecret?: string;
 
   constructor(options: RelayrOptions) {
     if (!options.apiKey?.startsWith("rl_")) {
@@ -44,6 +45,7 @@ export class Relayr {
     this.apiUrl = (options.apiUrl ?? DEFAULT_API_URL).replace(/\/$/, "");
     this.robotId = options.robotId;
     this.pollIntervalMs = options.pollIntervalMs ?? 2_000;
+    this.webhookSecret = options.webhookSecret;
   }
 
   private headers(): HeadersInit {

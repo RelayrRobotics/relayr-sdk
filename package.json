@@ -1,6 +1,6 @@
 {
   "name": "@relayrrobotics/sdk",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Relayr SDK — connect your robot, execute paid actions, report proof",
   "license": "MIT",
   "repository": {
@@ -37,6 +37,7 @@
     "payments"
   ],
   "devDependencies": {
+    "@types/node": "^26.1.1",
     "typescript": "^5.8.3"
   }
 }

@@ -1,4 +1,8 @@
 import type { Relayr } from "./client.js";
+import {
+  RELAYR_SIGNATURE_HEADER,
+  verifyWebhookSignature,
+} from "./signature.js";
 import type {
   RelayrActionWebhookPayload,
   RelayrCommandHandler,
@@ -110,6 +114,11 @@ export function actionWebhookToCommand(
 }
 
 export type RelayrWebhookHandlerOptions = {
+  /**
+   * HMAC secret for `X-Relayr-Signature` verification.
+   * Falls back to `relayr.webhookSecret`. When set, missing/invalid signatures are rejected (401).
+   */
+  webhookSecret?: string;
   onTest?: (payload: RelayrWebhookTestPayload) => void | Promise<void>;
   onInvalid?: (error: unknown) => void | Promise<void>;
 };
@@ -124,9 +133,20 @@ export function createWebhookHandler(
       return new Response("Method not allowed", { status: 405 });
     }
 
+    const rawBody = await req.text();
+    const secret = options.webhookSecret ?? relayr.webhookSecret;
+
+    if (secret) {
+      const signature = req.headers.get(RELAYR_SIGNATURE_HEADER);
+      if (!verifyWebhookSignature(rawBody, signature, secret)) {
+        await options.onInvalid?.(new Error("Invalid or missing webhook signature"));
+        return Response.json({ error: "Invalid webhook signature" }, { status: 401 });
+      }
+    }
+
     let payload: RelayrWebhookPayload;
     try {
-      payload = parseWebhookPayload(await req.json());
+      payload = parseWebhookPayload(JSON.parse(rawBody) as unknown);
     } catch (error) {
       await options.onInvalid?.(error);
       return Response.json({ error: "Invalid webhook payload" }, { status: 400 });
